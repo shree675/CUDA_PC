@@ -66,7 +66,7 @@ __global__ void find_cut_vertices(int* dvertex_pointers, int* dedges, int* dcut_
 
 int main(){
     int n=17;
-    int m=49;
+    int m=50;
     int threadsPerBlock=BS;
     int blocksPerGrid=(n+BS-1)/BS;
 
