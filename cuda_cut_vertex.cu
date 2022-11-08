@@ -71,25 +71,25 @@ int main(){
     int blocksPerGrid=(n+BS-1)/BS;
 
     int vertex_pointers[18];
-    int edges[49]={1,2,0,2,5,0,1,3,5,2,12,11,2,5,1,2,4,6,7,7,5,5,6,8,10,7,10,10,7,8,9,12,3,13,3,11,13,14,11,12,14,15,13,12,16,14,16,14,15};
+    int edges[50]={1,2,0,2,5,0,1,3,5,4,2,12,11,2,5,1,2,4,6,7,7,5,5,6,8,10,7,10,10,7,8,9,12,3,13,3,11,13,14,11,12,14,15,13,12,16,14,16,14,15};
     vertex_pointers[0]=0;
     vertex_pointers[1]=2;
     vertex_pointers[2]=5;
-    vertex_pointers[3]=9;
-    vertex_pointers[4]=12;
-    vertex_pointers[5]=14;
-    vertex_pointers[6]=19;
-    vertex_pointers[7]=21;
-    vertex_pointers[8]=25;
-    vertex_pointers[9]=27;
-    vertex_pointers[10]=28;
-    vertex_pointers[11]=31;
-    vertex_pointers[12]=34;
-    vertex_pointers[13]=38;
-    vertex_pointers[14]=41;
-    vertex_pointers[15]=45;
-    vertex_pointers[16]=47;
-    vertex_pointers[17]=49;
+    vertex_pointers[3]=10;
+    vertex_pointers[4]=13;
+    vertex_pointers[5]=15;
+    vertex_pointers[6]=20;
+    vertex_pointers[7]=22;
+    vertex_pointers[8]=26;
+    vertex_pointers[9]=28;
+    vertex_pointers[10]=29;
+    vertex_pointers[11]=32;
+    vertex_pointers[12]=35;
+    vertex_pointers[13]=39;
+    vertex_pointers[14]=42;
+    vertex_pointers[15]=46;
+    vertex_pointers[16]=48;
+    vertex_pointers[17]=50;
 
     int root=0;
 
