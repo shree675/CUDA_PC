@@ -1,0 +1,4 @@
+*.exe
+dynamic_parallelism.cu
+*.lib
+*.exp
