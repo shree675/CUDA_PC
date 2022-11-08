@@ -5,7 +5,7 @@
 
 using namespace std;
 
-__global__ void bfs(int* dflag, int* ddist, int* dvertex_pointers, int* dedges, int n, int m){
+__global__ void bfs(int* dflag, int* ddist, int* dvertex_pointers, int* dedges, int n){
     int tid=blockDim.x*blockIdx.x+threadIdx.x;
     int e;
     
@@ -76,7 +76,7 @@ int main(){
         flag=0;
         cudaMemcpy(ddist,dist,sizeof(int)*n,cudaMemcpyHostToDevice);
         cudaMemcpy(dflag,&flag,sizeof(int),cudaMemcpyHostToDevice);
-        bfs<<<blocksPerGrid,threadsPerBlock>>>(dflag,ddist,dvertex_pointers,dedges,n,m);
+        bfs<<<blocksPerGrid,threadsPerBlock>>>(dflag,ddist,dvertex_pointers,dedges,n);
         cudaMemcpy(dist,ddist,sizeof(int)*n,cudaMemcpyDeviceToHost);
         cudaMemcpy(&flag,dflag,sizeof(int),cudaMemcpyDeviceToHost);
     }
