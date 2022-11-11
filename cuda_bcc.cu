@@ -120,7 +120,7 @@ __global__ void find_minimum(int* dlevel, int* dvertex_pointers, int* dedges, in
     int blocksPerGrid=(n+BS-1)/BS;
 
     int e;
-    if(dlevel[tid]>=(cur_level-1)){
+    if(dlevel[tid]>=(cur_level-1) && tid!=*dcurrent_cut_vertex){
         for(int i=dvertex_pointers[tid];i<dvertex_pointers[tid+1];i++){
             if(dvisited[i]){
                 continue;
@@ -165,6 +165,7 @@ __global__ void set_bcc_id(int* dlevel, int* dvertex_pointers, int* dedges, int*
                 }
                 ddist[e]=ddist[tid]+1;
                 dbcc[i]=*dminimum;
+                // printf("%d %d\n",*dminimum,i);
                 *dflag=1;
             }
         }
@@ -179,7 +180,7 @@ __global__ void find_bcc(int* dlevel, int* dvertex_pointers, int* dedges, int* d
     if(dlevel[tid]==cur_level && dunsafe_vertex[tid]!=-1){
         int* dminimum;
         cudaMalloc(&dminimum,sizeof(int));
-        *dminimum=INT_MAX;
+        *dminimum=INT_MAX/2;
 
         int* dcurrent_cut_vertex;
         cudaMalloc(&dcurrent_cut_vertex,sizeof(int));
@@ -200,13 +201,13 @@ __global__ void find_bcc(int* dlevel, int* dvertex_pointers, int* dedges, int* d
                 return;
             }
         }
+        printf("%d\n",*dminimum);
 
         for(int i=0;i<n;i++){
             ddist[i]=INT_MAX/2;
         }
         ddist[tid]=0;
         *dflag=1;
-        cudaMalloc(&dcurrent_cut_vertex,sizeof(int));
         while(*dflag){
             *dflag=0;
             set_bcc_id<<<1,n>>>(dlevel,dvertex_pointers,dedges,ddist,n,dflag,cur_level,dminimum,dcurrent_cut_vertex,dvisited,dbcc);
@@ -302,8 +303,11 @@ int main(){
     // }
 
     int bcc[50];
+    for(int i=0;i<n;i++){
+        bcc[i]=-1;
+    }
     int* dbcc;
-    cudaMalloc(&dbcc,sizeof(int)*n);
+    cudaMalloc(&dbcc,sizeof(int)*m);
 
     int visited[50]={0};
     int* dvisited;
@@ -311,14 +315,14 @@ int main(){
 
     for(int i=max_level;i>=0;i--){
         cudaMemcpy(dvisited,visited,sizeof(int)*m,cudaMemcpyHostToDevice);
-        cudaMemcpy(dbcc,bcc,sizeof(int)*n,cudaMemcpyHostToDevice);
+        cudaMemcpy(dbcc,bcc,sizeof(int)*m,cudaMemcpyHostToDevice);
         find_bcc<<<1,n>>>(dlevel,dvertex_pointers,dedges,dunsafe_vertex,i,n,dbcc,dvisited);
         cudaDeviceSynchronize();
-        cudaMemcpy(bcc,dbcc,sizeof(int)*n,cudaMemcpyDeviceToHost);
+        cudaMemcpy(bcc,dbcc,sizeof(int)*m,cudaMemcpyDeviceToHost);
         cudaMemcpy(visited,dvisited,sizeof(int)*m,cudaMemcpyDeviceToHost);
     }
 
-    for(int i=0;i<m;i++){
-        cout<<i<<" "<<bcc[i]<<endl;
-    }
+    // for(int i=0;i<m;i++){
+    //     cout<<i<<" "<<bcc[i]<<endl;
+    // }
 }
