@@ -1,5 +1,4 @@
 #include <iostream>
-#include <climits>
 
 #define BS 17
 
@@ -42,7 +41,7 @@ __global__ void truncated_bfs(int* dlevel, int* dvertex_pointers, int* dedges, i
     }
 }
 
-__global__ void find_cut_vertices(int* dlevel, int* dvertex_pointers, int* dedges, int* dcut_vertex, int n, int root){
+__global__ void find_cut_vertices(int* dlevel, int* dvertex_pointers, int* dedges, int* dcut_vertex, int n, int root, int* dunsafe_vertex){
     int tid=blockDim.x*blockIdx.x+threadIdx.x;
     int threadsPerBlock=BS;
     int blocksPerGrid=(n+BS-1)/BS;
@@ -76,7 +75,7 @@ __global__ void find_cut_vertices(int* dlevel, int* dvertex_pointers, int* dedge
             }
             if(!(*dreached)){
                 dcut_vertex[tid]=1;
-                break;
+                dunsafe_vertex[e]=tid;
             }
             if(tid==root){
                 break;
@@ -108,7 +107,111 @@ __global__ void find_cut_vertices(int* dlevel, int* dvertex_pointers, int* dedge
         for(int i=0;i<n;i++){
             if(ddist[i]>=INT_MAX/2 && i!=tid){
                 dcut_vertex[tid]=1;
+                dunsafe_vertex[e]=tid;
                 break;
+            }
+        }
+    }
+}
+
+__global__ void find_minimum(int* dlevel, int* dvertex_pointers, int* dedges, int* ddist, int n, int* dflag, int* dcurrent_cut_vertex, int* dminimum, int cur_level, int* dvisited){
+    int tid=blockDim.x*blockIdx.x+threadIdx.x;
+    int threadsPerBlock=BS;
+    int blocksPerGrid=(n+BS-1)/BS;
+
+    int e;
+    if(dlevel[tid]>=(cur_level-1)){
+        for(int i=dvertex_pointers[tid];i<dvertex_pointers[tid+1];i++){
+            if(dvisited[i]){
+                continue;
+            }
+            e=dedges[i];
+
+            if(tid!=*dcurrent_cut_vertex){
+                atomicMin(dminimum,tid);
+            }
+            
+            if(ddist[e]>(ddist[tid]+1)){
+                if(dlevel[e]<dlevel[*dcurrent_cut_vertex]){
+                    continue;
+                }
+                ddist[e]=ddist[tid]+1;
+                if(e!=*dcurrent_cut_vertex){
+                    atomicMin(dminimum,e);
+                }
+                *dflag=1;
+            }
+        }
+    }
+}
+
+__global__ void set_bcc_id(int* dlevel, int* dvertex_pointers, int* dedges, int* ddist, int n, int* dflag, int cur_level, int* dminimum, int* dcurrent_cut_vertex, int* dvisited, int* dbcc){
+    int tid=blockDim.x*blockIdx.x+threadIdx.x;
+    int threadsPerBlock=BS;
+    int blocksPerGrid=(n+BS-1)/BS;
+
+    int e;
+    if(dlevel[tid]>=(cur_level-1)){
+        for(int i=dvertex_pointers[tid];i<dvertex_pointers[tid+1];i++){
+            if(dvisited[i]){
+                continue;
+            }
+            dvisited[i]=1;
+            e=dedges[i];
+            
+            if(ddist[e]>(ddist[tid]+1)){
+                if(dlevel[e]<dlevel[*dcurrent_cut_vertex]){
+                    continue;
+                }
+                ddist[e]=ddist[tid]+1;
+                dbcc[i]=*dminimum;
+                *dflag=1;
+            }
+        }
+    }
+}
+
+__global__ void find_bcc(int* dlevel, int* dvertex_pointers, int* dedges, int* dunsafe_vertex, int cur_level, int n, int* dbcc, int* dvisited){
+    int tid=blockDim.x*blockIdx.x+threadIdx.x;
+    int threadsPerBlock=BS;
+    int blocksPerGrid=(n+BS-1)/BS;
+
+    if(dlevel[tid]==cur_level && dunsafe_vertex[tid]!=-1){
+        int* dminimum;
+        cudaMalloc(&dminimum,sizeof(int));
+        *dminimum=INT_MAX;
+
+        int* dcurrent_cut_vertex;
+        cudaMalloc(&dcurrent_cut_vertex,sizeof(int));
+        *dcurrent_cut_vertex=dunsafe_vertex[tid];
+        int* dflag;
+        int* ddist;
+        cudaMalloc((void**) &dflag,sizeof(int));
+        cudaMalloc((void**) &ddist,sizeof(int)*n);
+        for(int i=0;i<n;i++){
+            ddist[i]=INT_MAX/2;
+        }
+        ddist[tid]=0;
+        *dflag=1;
+        while(*dflag){
+            *dflag=0;
+            find_minimum<<<1,n>>>(dlevel,dvertex_pointers,dedges,ddist,n,dflag,dcurrent_cut_vertex,dminimum,cur_level,dvisited);
+            if (cudaSuccess != cudaDeviceSynchronize()) {
+                return;
+            }
+        }
+
+        for(int i=0;i<n;i++){
+            ddist[i]=INT_MAX/2;
+        }
+        ddist[tid]=0;
+        *dflag=1;
+        cudaMalloc(&dcurrent_cut_vertex,sizeof(int));
+        while(*dflag){
+            *dflag=0;
+            set_bcc_id<<<1,n>>>(dlevel,dvertex_pointers,dedges,ddist,n,dflag,cur_level,dminimum,dcurrent_cut_vertex,dvisited,dbcc);
+            if (cudaSuccess != cudaDeviceSynchronize()) {
+                return;
             }
         }
     }
@@ -157,36 +260,65 @@ int main(){
     cudaMemcpy(dcut_vertex,cut_vertex,sizeof(int)*n,cudaMemcpyHostToDevice);
 
     int level[17];
+    int unsafe_vertex[17];
     for(int i=0;i<n;i++){
         level[i]=INT_MAX/2;
+        unsafe_vertex[i]=-1;
     }
     level[root]=0;
     int* dlevel;
     cudaMalloc((void**) &dlevel,sizeof(int)*n);
 
+    int* dunsafe_vertex;
+    cudaMalloc((void**) &dunsafe_vertex,sizeof(int)*n);
+
     int flag=1;
     int* dflag;
     cudaMalloc((void**) &dflag,sizeof(int));
 
+    int max_level=0;
     while(flag){
         flag=0;
         cudaMemcpy(dlevel,level,sizeof(int)*n,cudaMemcpyHostToDevice);
         cudaMemcpy(dflag,&flag,sizeof(int),cudaMemcpyHostToDevice);
         bfs<<<1,n>>>(dflag,dlevel,dvertex_pointers,dedges,n);
+        max_level++;
         cudaMemcpy(level,dlevel,sizeof(int)*n,cudaMemcpyDeviceToHost);
         cudaMemcpy(&flag,dflag,sizeof(int),cudaMemcpyDeviceToHost);
     }
     cudaDeviceSynchronize();
 
+    cudaMemcpy(dunsafe_vertex,unsafe_vertex,sizeof(int)*n,cudaMemcpyHostToDevice);
     cudaMemcpy(dlevel,level,sizeof(int)*n,cudaMemcpyHostToDevice);
-    find_cut_vertices<<<1,n>>>(dlevel,dvertex_pointers,dedges,dcut_vertex,n,root);
+    find_cut_vertices<<<1,n>>>(dlevel,dvertex_pointers,dedges,dcut_vertex,n,root,dunsafe_vertex);
     cudaDeviceSynchronize();
     cudaMemcpy(&cut_vertex,dcut_vertex,sizeof(int)*n,cudaMemcpyDeviceToHost);
+    cudaMemcpy(unsafe_vertex,dunsafe_vertex,sizeof(int)*n,cudaMemcpyDeviceToHost);
 
-    for(int i=0;i<n;i++){
-        if(cut_vertex[i]==1){
-            cout<<i<<" ";
-        }
+    // for(int i=0;i<n;i++){
+    //     if(unsafe_vertex[i]!=-1){
+    //         cout<<i<<" "<<unsafe_vertex[i]<<endl;
+    //     }
+    // }
+
+    int bcc[50];
+    int* dbcc;
+    cudaMalloc(&dbcc,sizeof(int)*n);
+
+    int visited[50]={0};
+    int* dvisited;
+    cudaMalloc(&dvisited,sizeof(int)*m);
+
+    for(int i=max_level;i>=0;i--){
+        cudaMemcpy(dvisited,visited,sizeof(int)*m,cudaMemcpyHostToDevice);
+        cudaMemcpy(dbcc,bcc,sizeof(int)*n,cudaMemcpyHostToDevice);
+        find_bcc<<<1,n>>>(dlevel,dvertex_pointers,dedges,dunsafe_vertex,i,n,dbcc,dvisited);
+        cudaDeviceSynchronize();
+        cudaMemcpy(bcc,dbcc,sizeof(int)*n,cudaMemcpyDeviceToHost);
+        cudaMemcpy(visited,dvisited,sizeof(int)*m,cudaMemcpyDeviceToHost);
     }
 
+    for(int i=0;i<m;i++){
+        cout<<i<<" "<<bcc[i]<<endl;
+    }
 }
