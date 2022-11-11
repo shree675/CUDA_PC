@@ -1,4 +1,5 @@
 #include <iostream>
+#include <thrust/device_vector.h>
 
 #define BS 17
 
@@ -114,65 +115,56 @@ __global__ void find_cut_vertices(int* dlevel, int* dvertex_pointers, int* dedge
     }
 }
 
-__global__ void find_minimum(int* dlevel, int* dvertex_pointers, int* dedges, int* ddist, int n, int* dflag, int* dcurrent_cut_vertex, int* dminimum, int cur_level, int* dvisited){
-    int tid=blockDim.x*blockIdx.x+threadIdx.x;
-    int threadsPerBlock=BS;
-    int blocksPerGrid=(n+BS-1)/BS;
+__device__ void set_bcc_id(int* dvertex_pointers, int* dedges, int* dvisited, int* dcurrent_cut_vertex, int u, int* dminimum, int* dbcc){
+    for(int i=dvertex_pointers[u];i<dvertex_pointers[u+1];i++){
+        if(dvisited[i]){
+            return;
+        }
+        int v=dedges[i];
 
-    int e;
-    if(dlevel[tid]>=(cur_level-1) && tid!=*dcurrent_cut_vertex){
-        for(int i=dvertex_pointers[tid];i<dvertex_pointers[tid+1];i++){
-            if(dvisited[i]){
-                continue;
+        dvisited[i]=1;
+        for(int j=dvertex_pointers[v];j<dvertex_pointers[j+1];j++){
+            if(dedges[j]==u){
+                dbcc[j]=*dminimum;
+                break;
             }
-            e=dedges[i];
-
-            if(tid!=*dcurrent_cut_vertex){
-                atomicMin(dminimum,tid);
-            }
-            
-            if(ddist[e]>(ddist[tid]+1)){
-                if(dlevel[e]<dlevel[*dcurrent_cut_vertex]){
-                    continue;
-                }
-                ddist[e]=ddist[tid]+1;
-                if(e!=*dcurrent_cut_vertex){
-                    atomicMin(dminimum,e);
-                }
-                *dflag=1;
-            }
+        }
+        dbcc[i]=*dminimum;
+        
+        if(v!=*dcurrent_cut_vertex){
+            set_bcc_id(dvertex_pointers,dedges,dvisited,dcurrent_cut_vertex,v,dminimum,dbcc);
         }
     }
 }
 
-__global__ void set_bcc_id(int* dlevel, int* dvertex_pointers, int* dedges, int* ddist, int n, int* dflag, int cur_level, int* dminimum, int* dcurrent_cut_vertex, int* dvisited, int* dbcc){
-    int tid=blockDim.x*blockIdx.x+threadIdx.x;
-    int threadsPerBlock=BS;
-    int blocksPerGrid=(n+BS-1)/BS;
+__device__ void dfs(int* dvertex_pointers, int* dedges, int* lcl_dvisited, int* dcurrent_cut_vertex, int* dminimum, int u, int* dcut_vertex){
+    for(int i=dvertex_pointers[u];i<dvertex_pointers[u+1];i++){
+        if(lcl_dvisited[i]){
+            return;
+        }
+        int v=dedges[i];
 
-    int e;
-    if(dlevel[tid]>=(cur_level-1)){
-        for(int i=dvertex_pointers[tid];i<dvertex_pointers[tid+1];i++){
-            if(dvisited[i]){
-                continue;
-            }
-            dvisited[i]=1;
-            e=dedges[i];
-            
-            if(ddist[e]>(ddist[tid]+1)){
-                if(dlevel[e]<dlevel[*dcurrent_cut_vertex]){
-                    continue;
-                }
-                ddist[e]=ddist[tid]+1;
-                dbcc[i]=*dminimum;
-                // printf("%d %d\n",*dminimum,i);
-                *dflag=1;
-            }
+        if(v!=*dcurrent_cut_vertex){
+            atomicMin(dminimum,v);
+        }
+
+        lcl_dvisited[i]=1;
+        
+        if(v!=*dcurrent_cut_vertex){
+            dfs(dvertex_pointers,dedges,lcl_dvisited,dcurrent_cut_vertex,dminimum,v,dcut_vertex);
         }
     }
 }
 
-__global__ void find_bcc(int* dlevel, int* dvertex_pointers, int* dedges, int* dunsafe_vertex, int cur_level, int n, int* dbcc, int* dvisited){
+__global__ void copy_visited(int* lcl_dvisited, int* dvisited, int m){
+    int tid=blockDim.x*blockIdx.x+threadIdx.x;
+
+    if(tid<m){
+        lcl_dvisited[tid]=dvisited[tid];
+    }
+}
+
+__global__ void find_bcc(int* dlevel, int* dvertex_pointers, int* dedges, int* dunsafe_vertex, int cur_level, int n, int* dbcc, int* dvisited, int* dcut_vertex){
     int tid=blockDim.x*blockIdx.x+threadIdx.x;
     int threadsPerBlock=BS;
     int blocksPerGrid=(n+BS-1)/BS;
@@ -180,43 +172,63 @@ __global__ void find_bcc(int* dlevel, int* dvertex_pointers, int* dedges, int* d
     if(dlevel[tid]==cur_level && dunsafe_vertex[tid]!=-1){
         int* dminimum;
         cudaMalloc(&dminimum,sizeof(int));
-        *dminimum=INT_MAX/2;
+        *dminimum=tid;
 
         int* dcurrent_cut_vertex;
         cudaMalloc(&dcurrent_cut_vertex,sizeof(int));
         *dcurrent_cut_vertex=dunsafe_vertex[tid];
-        int* dflag;
         int* ddist;
-        cudaMalloc((void**) &dflag,sizeof(int));
         cudaMalloc((void**) &ddist,sizeof(int)*n);
         for(int i=0;i<n;i++){
             ddist[i]=INT_MAX/2;
         }
         ddist[tid]=0;
-        *dflag=1;
-        while(*dflag){
-            *dflag=0;
-            find_minimum<<<1,n>>>(dlevel,dvertex_pointers,dedges,ddist,n,dflag,dcurrent_cut_vertex,dminimum,cur_level,dvisited);
-            if (cudaSuccess != cudaDeviceSynchronize()) {
-                return;
-            }
-        }
-        printf("%d\n",*dminimum);
 
-        for(int i=0;i<n;i++){
-            ddist[i]=INT_MAX/2;
-        }
-        ddist[tid]=0;
-        *dflag=1;
-        while(*dflag){
-            *dflag=0;
-            set_bcc_id<<<1,n>>>(dlevel,dvertex_pointers,dedges,ddist,n,dflag,cur_level,dminimum,dcurrent_cut_vertex,dvisited,dbcc);
-            if (cudaSuccess != cudaDeviceSynchronize()) {
-                return;
-            }
-        }
+        int* lcl_dvisited;
+        cudaMalloc(&lcl_dvisited,sizeof(int)*50);
+
+        copy_visited<<<1,50>>>(lcl_dvisited,dvisited,50);
+        dfs(dvertex_pointers,dedges,lcl_dvisited,dcurrent_cut_vertex,dminimum,tid,dcut_vertex);
+
+        // printf("%d %d\n",tid,*dminimum);
+
+        set_bcc_id(dvertex_pointers,dedges,dvisited,dcurrent_cut_vertex,tid,dminimum,dbcc);
     }
 }
+
+__global__ void set_bcc_id_root(int* dvertex_pointers, int* dedges, int* dvisited, int u, int dminimum, int* dbcc){
+    for(int i=dvertex_pointers[u];i<dvertex_pointers[u+1];i++){
+        if(dvisited[i]){
+            continue;
+        }
+        int v=dedges[i];
+
+        dvisited[i]=1;
+        for(int j=dvertex_pointers[v];j<dvertex_pointers[j+1];j++){
+            if(dedges[j]==u){
+                dbcc[j]=dminimum;
+                break;
+            }
+        }
+        dbcc[i]=dminimum;
+        
+        set_bcc_id_root<<<1,1>>>(dvertex_pointers,dedges,dvisited,v,dminimum,dbcc);
+    }
+}
+
+// __global__ void set_bcc_id_root_dec(int* dvertex_pointers, int* dedges, int* dvisited, int u, int dminimum, int* dbcc){
+//     for(int i=dvertex_pointers[u+1]-1;i>=dvertex_pointers[u];i--){
+//         if(dvisited[i]){
+//             continue;
+//         }
+//         int v=dedges[i];
+
+//         dvisited[i]=1;
+//         dbcc[i]=dminimum;
+        
+//         set_bcc_id_root_dec<<<1,1>>>(dvertex_pointers,dedges,dvisited,v,-1,dbcc);
+//     }
+// }
 
 int main(){
     int n=17;
@@ -316,13 +328,32 @@ int main(){
     for(int i=max_level;i>=0;i--){
         cudaMemcpy(dvisited,visited,sizeof(int)*m,cudaMemcpyHostToDevice);
         cudaMemcpy(dbcc,bcc,sizeof(int)*m,cudaMemcpyHostToDevice);
-        find_bcc<<<1,n>>>(dlevel,dvertex_pointers,dedges,dunsafe_vertex,i,n,dbcc,dvisited);
+        find_bcc<<<1,n>>>(dlevel,dvertex_pointers,dedges,dunsafe_vertex,i,n,dbcc,dvisited,dcut_vertex);
         cudaDeviceSynchronize();
         cudaMemcpy(bcc,dbcc,sizeof(int)*m,cudaMemcpyDeviceToHost);
         cudaMemcpy(visited,dvisited,sizeof(int)*m,cudaMemcpyDeviceToHost);
     }
 
-    // for(int i=0;i<m;i++){
-    //     cout<<i<<" "<<bcc[i]<<endl;
-    // }
+    set_bcc_id_root<<<1,1>>>(dvertex_pointers,dedges,dvisited,root,-1,dbcc);
+    cudaMemcpy(visited,dvisited,sizeof(int)*m,cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+    // cudaMemcpy(dvisited,visited,sizeof(int)*m,cudaMemcpyHostToDevice);
+    // // set_bcc_id_root_dec<<<1,1>>>(dvertex_pointers,dedges,dvisited,root,-1,dbcc);
+    // cudaDeviceSynchronize();
+
+    int count=0;
+    for(int i=0;i<n;i++){
+        for(int j=vertex_pointers[i];j<vertex_pointers[i+1];j++){
+            // if(level[i]>level[edges[j]]){
+            //     cout<<i<<"-"<<edges[j]<<" "<<bcc[j]<<endl;
+            //     count++;
+            // }
+            // else if(level[i]==level[edges[j]] && i<edges[j]){
+            //     cout<<i<<"-"<<edges[j]<<" "<<bcc[j]<<endl;
+            //     count++;
+            // }
+            cout<<i<<"-"<<edges[j]<<" "<<bcc[j]<<endl;
+        }
+    }
+    cout<<count;
 }
