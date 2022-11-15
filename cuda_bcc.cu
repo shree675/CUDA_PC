@@ -123,12 +123,13 @@ __device__ void set_bcc_id(int* dvertex_pointers, int* dedges, int* dvisited, in
         int v=dedges[i];
 
         dvisited[i]=1;
-        for(int j=dvertex_pointers[v];j<dvertex_pointers[j+1];j++){
-            if(dedges[j]==u){
-                dbcc[j]=*dminimum;
-                break;
-            }
-        }
+        // for(int j=dvertex_pointers[v];j<dvertex_pointers[j+1];j++){
+        //     if(dedges[j]==u){
+        //         dvisited[j]=1;
+        //         dbcc[j]=*dminimum;
+        //         break;
+        //     }
+        // }
         dbcc[i]=*dminimum;
         
         if(v!=*dcurrent_cut_vertex){
@@ -190,45 +191,9 @@ __global__ void find_bcc(int* dlevel, int* dvertex_pointers, int* dedges, int* d
         copy_visited<<<1,50>>>(lcl_dvisited,dvisited,50);
         dfs(dvertex_pointers,dedges,lcl_dvisited,dcurrent_cut_vertex,dminimum,tid,dcut_vertex);
 
-        // printf("%d %d\n",tid,*dminimum);
-
         set_bcc_id(dvertex_pointers,dedges,dvisited,dcurrent_cut_vertex,tid,dminimum,dbcc);
     }
 }
-
-__global__ void set_bcc_id_root(int* dvertex_pointers, int* dedges, int* dvisited, int u, int dminimum, int* dbcc){
-    for(int i=dvertex_pointers[u];i<dvertex_pointers[u+1];i++){
-        if(dvisited[i]){
-            continue;
-        }
-        int v=dedges[i];
-
-        dvisited[i]=1;
-        for(int j=dvertex_pointers[v];j<dvertex_pointers[j+1];j++){
-            if(dedges[j]==u){
-                dbcc[j]=dminimum;
-                break;
-            }
-        }
-        dbcc[i]=dminimum;
-        
-        set_bcc_id_root<<<1,1>>>(dvertex_pointers,dedges,dvisited,v,dminimum,dbcc);
-    }
-}
-
-// __global__ void set_bcc_id_root_dec(int* dvertex_pointers, int* dedges, int* dvisited, int u, int dminimum, int* dbcc){
-//     for(int i=dvertex_pointers[u+1]-1;i>=dvertex_pointers[u];i--){
-//         if(dvisited[i]){
-//             continue;
-//         }
-//         int v=dedges[i];
-
-//         dvisited[i]=1;
-//         dbcc[i]=dminimum;
-        
-//         set_bcc_id_root_dec<<<1,1>>>(dvertex_pointers,dedges,dvisited,v,-1,dbcc);
-//     }
-// }
 
 int main(){
     int n=17;
@@ -315,7 +280,7 @@ int main(){
     // }
 
     int bcc[50];
-    for(int i=0;i<n;i++){
+    for(int i=0;i<m;i++){
         bcc[i]=-1;
     }
     int* dbcc;
@@ -334,25 +299,18 @@ int main(){
         cudaMemcpy(visited,dvisited,sizeof(int)*m,cudaMemcpyDeviceToHost);
     }
 
-    set_bcc_id_root<<<1,1>>>(dvertex_pointers,dedges,dvisited,root,-1,dbcc);
-    cudaMemcpy(visited,dvisited,sizeof(int)*m,cudaMemcpyDeviceToHost);
-    cudaDeviceSynchronize();
-    // cudaMemcpy(dvisited,visited,sizeof(int)*m,cudaMemcpyHostToDevice);
-    // // set_bcc_id_root_dec<<<1,1>>>(dvertex_pointers,dedges,dvisited,root,-1,dbcc);
-    // cudaDeviceSynchronize();
-
     int count=0;
     for(int i=0;i<n;i++){
         for(int j=vertex_pointers[i];j<vertex_pointers[i+1];j++){
-            // if(level[i]>level[edges[j]]){
-            //     cout<<i<<"-"<<edges[j]<<" "<<bcc[j]<<endl;
-            //     count++;
-            // }
-            // else if(level[i]==level[edges[j]] && i<edges[j]){
-            //     cout<<i<<"-"<<edges[j]<<" "<<bcc[j]<<endl;
-            //     count++;
-            // }
-            cout<<i<<"-"<<edges[j]<<" "<<bcc[j]<<endl;
+            if(level[i]>level[edges[j]]){
+                cout<<i<<"-"<<edges[j]<<" "<<bcc[j]<<endl;
+                count++;
+            }
+            else if(level[i]==level[edges[j]] && i<edges[j]){
+                cout<<i<<"-"<<edges[j]<<" "<<bcc[j]<<endl;
+                count++;
+            }
+            // cout<<i<<"-"<<edges[j]<<" "<<bcc[j]<<endl;
         }
     }
     cout<<count;
