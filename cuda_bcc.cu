@@ -1,7 +1,14 @@
 #include <iostream>
 #include <thrust/device_vector.h>
 
+// Test Case 1
 #define BS 17
+
+// Test Case 2
+// #define BS 7
+
+// Test Case 3
+// #define BS 22
 
 using namespace std;
 
@@ -196,11 +203,11 @@ __global__ void find_bcc(int* dlevel, int* dvertex_pointers, int* dedges, int* d
 }
 
 int main(){
+    
+    // Please note: On changing test case, change the #define to change the value of BS the same value as n
+    // Test Case 1:----------------------
     int n=17;
     int m=50;
-    int threadsPerBlock=BS;
-    int blocksPerGrid=(n+BS-1)/BS;
-
     int vertex_pointers[18];
     int edges[50]={1,2,0,2,5,0,1,3,5,4,2,12,11,2,5,1,2,4,6,7,7,5,5,6,8,10,7,10,10,7,8,9,12,3,13,3,11,13,14,11,12,14,15,13,12,16,14,16,14,15};
     vertex_pointers[0]=0;
@@ -221,6 +228,29 @@ int main(){
     vertex_pointers[15]=46;
     vertex_pointers[16]=48;
     vertex_pointers[17]=50;
+    // End of Test Case 1--------------------
+
+    // Test Case 2: 
+    // int n=7;
+    // int m=20;
+
+    // int vertex_pointers[8] = {0,1,7,9,12,15,18,20};
+    // int edges[20]={1,0,2,3,4,5,6,1,3,1,2,4,1,3,5,1,4,6,1,5};
+    // End of Test Case 2 --------------------
+
+    // Test Case 3:
+    // int n=22;
+    // int m=54;
+
+    // int vertex_pointers[23] = {0,2,3,5,8,11,13,16,18,20,25,27,29,31,33,36,40,42,44,46,50,52,54};
+    // int edges[54]={2,7,19,0,3,2,4,5,3,6,7,3,6,4,5,8,0,4,6,9,8,10,13,14,19,9,11,10,12,11,13,9,12,9,15,18,14,16,17,18,15,17,16,15,14,15,1,9,20,21,19,21,19,20};
+
+
+    // End of Test Case 3 --------------------
+
+
+    int threadsPerBlock=BS;
+    int blocksPerGrid=(n+BS-1)/BS;
 
     int root=0;
 
