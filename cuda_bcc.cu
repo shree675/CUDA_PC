@@ -195,8 +195,10 @@ __global__ void find_bcc(int* dlevel, int* dvertex_pointers, int* dedges, int* d
         int* lcl_dvisited;
         cudaMalloc(&lcl_dvisited,sizeof(int)*50);
 
-        copy_visited<<<1,50>>>(lcl_dvisited,dvisited,50);
+        copy_visited<<<blocksPerGrid,50>>>(lcl_dvisited,dvisited,50);
         dfs(dvertex_pointers,dedges,lcl_dvisited,dcurrent_cut_vertex,dminimum,tid,dcut_vertex);
+
+        // printf("%d\n",*dminimum);
 
         set_bcc_id(dvertex_pointers,dedges,dvisited,dcurrent_cut_vertex,tid,dminimum,dbcc);
     }
@@ -320,7 +322,7 @@ int main(){
     int* dvisited;
     cudaMalloc(&dvisited,sizeof(int)*m);
 
-    for(int i=max_level;i>=0;i--){
+    for(int i=max_level+1;i>=0;i--){
         cudaMemcpy(dvisited,visited,sizeof(int)*m,cudaMemcpyHostToDevice);
         cudaMemcpy(dbcc,bcc,sizeof(int)*m,cudaMemcpyHostToDevice);
         find_bcc<<<1,n>>>(dlevel,dvertex_pointers,dedges,dunsafe_vertex,i,n,dbcc,dvisited,dcut_vertex);
