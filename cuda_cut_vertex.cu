@@ -1,15 +1,26 @@
+/*
+* Program to obtain the cut vertices of a graph given in CSR format. 
+* Output is the list of cut vertices.
+* To execute, run the following command on a system with CUDA support enabled GPUs
+* bash run.sh cuda_cut_vertex.cu
+*/
+
 #include <iostream>
 #include <climits>
+#include <chrono>
 
 #define BS 17
+#define N 17
+#define M 50
+#define ROOT 0
 
 using namespace std;
 
-__global__ void bfs(int* dflag, int* dlevel, int* dvertex_pointers, int* dedges, int n){
+__global__ void bfs(int* dflag, int* dlevel, int* dvertex_pointers, int* dedges){
     int tid=blockDim.x*blockIdx.x+threadIdx.x;
     int e;
     
-    if(tid<n){
+    if(tid<N){
         for(int i=dvertex_pointers[tid];i<dvertex_pointers[tid+1];i++){
             e=dedges[i];
             if(dlevel[e]>(dlevel[tid]+1)){
@@ -20,11 +31,11 @@ __global__ void bfs(int* dflag, int* dlevel, int* dvertex_pointers, int* dedges,
     }
 }
 
-__global__ void truncated_bfs(int* dlevel, int* dvertex_pointers, int* dedges, int* ddist, int n, int u, int* dflag, int* dreached){
+__global__ void truncated_bfs(int* dlevel, int* dvertex_pointers, int* dedges, int* ddist, int u, int* dflag, int* dreached){
     int tid=blockDim.x*blockIdx.x+threadIdx.x;
     int e;
     
-    if(tid<n && tid!=u){
+    if(tid<N && tid!=u){
         for(int i=dvertex_pointers[tid];i<dvertex_pointers[tid+1];i++){
             e=dedges[i];
             if(e==u){
@@ -42,12 +53,12 @@ __global__ void truncated_bfs(int* dlevel, int* dvertex_pointers, int* dedges, i
     }
 }
 
-__global__ void find_cut_vertices(int* dlevel, int* dvertex_pointers, int* dedges, int* dcut_vertex, int n, int root){
+__global__ void find_cut_vertices(int* dlevel, int* dvertex_pointers, int* dedges, int* dcut_vertex){
     int tid=blockDim.x*blockIdx.x+threadIdx.x;
     int threadsPerBlock=BS;
-    int blocksPerGrid=(n+BS-1)/BS;
+    int blocksPerGrid=(N+BS-1)/BS;
 
-    if(tid<n && tid!=root){
+    if(tid<N && tid!=ROOT){
         for(int j=dvertex_pointers[tid];j<dvertex_pointers[tid+1];j++){
             
             int e=dedges[j];
@@ -57,8 +68,8 @@ __global__ void find_cut_vertices(int* dlevel, int* dvertex_pointers, int* dedge
             cudaMalloc((void**) &dflag,sizeof(int));
             int* dreached;
             cudaMalloc((void**) &dreached,sizeof(int));
-            cudaMalloc((void**) &ddist,sizeof(int)*n);
-            for(int i=0;i<n;i++){
+            cudaMalloc((void**) &ddist,sizeof(int)*N);
+            for(int i=0;i<N;i++){
                 ddist[i]=INT_MAX/2;
             }
             ddist[e]=0;
@@ -66,7 +77,7 @@ __global__ void find_cut_vertices(int* dlevel, int* dvertex_pointers, int* dedge
             *dreached=0;
             while(*dflag && !(*dreached)){
                 *dflag=0;
-                truncated_bfs<<<1,n>>>(dlevel,dvertex_pointers,dedges,ddist,n,tid,dflag,dreached);
+                truncated_bfs<<<blocksPerGrid,N>>>(dlevel,dvertex_pointers,dedges,ddist,tid,dflag,dreached);
                 if (cudaSuccess != cudaDeviceSynchronize()) {
                     return;
                 }
@@ -78,21 +89,20 @@ __global__ void find_cut_vertices(int* dlevel, int* dvertex_pointers, int* dedge
                 dcut_vertex[tid]=1;
                 break;
             }
-            if(tid==root){
+            if(tid==ROOT){
                 break;
             }
         }
     }
-    else if(tid==root){
+    else if(tid==ROOT){
         int e=dedges[dvertex_pointers[tid]];
         int* dflag;
         int* ddist;
         cudaMalloc((void**) &dflag,sizeof(int));
-        cudaMalloc((void**) &ddist,sizeof(int)*n);
+        cudaMalloc((void**) &ddist,sizeof(int)*N);
         int* dreached;
         cudaMalloc((void**) &dreached,sizeof(int));
-        bool done=false;
-        for(int i=0;i<n;i++){
+        for(int i=0;i<N;i++){
             ddist[i]=INT_MAX/2;
         }
         ddist[e]=0;
@@ -100,12 +110,12 @@ __global__ void find_cut_vertices(int* dlevel, int* dvertex_pointers, int* dedge
         *dreached=0;
         while(*dflag){
             *dflag=0;
-            truncated_bfs<<<1,n>>>(ddist,dvertex_pointers,dedges,ddist,n,tid,dflag,dreached);
+            truncated_bfs<<<blocksPerGrid,N>>>(ddist,dvertex_pointers,dedges,ddist,tid,dflag,dreached);
             if (cudaSuccess != cudaDeviceSynchronize()) {
                 return;
             }
         }
-        for(int i=0;i<n;i++){
+        for(int i=0;i<N;i++){
             if(ddist[i]>=INT_MAX/2 && i!=tid){
                 dcut_vertex[tid]=1;
                 break;
@@ -114,14 +124,19 @@ __global__ void find_cut_vertices(int* dlevel, int* dvertex_pointers, int* dedge
     }
 }
 
-int main(){
-    int n=17;
-    int m=50;
-    int threadsPerBlock=BS;
-    int blocksPerGrid=(n+BS-1)/BS;
+__global__ void initialize(int* dlevel){
+    for(int i=0;i<N;i++){
+        dlevel[i]=INT_MAX/2;
+    }
+    dlevel[ROOT]=0;
+}
 
-    int vertex_pointers[18];
-    int edges[50]={1,2,0,2,5,0,1,3,5,4,2,12,11,2,5,1,2,4,6,7,7,5,5,6,8,10,7,10,10,7,8,9,12,3,13,3,11,13,14,11,12,14,15,13,12,16,14,16,14,15};
+int main(){
+    int threadsPerBlock=BS;
+    int blocksPerGrid=(N+BS-1)/BS;
+
+    int vertex_pointers[N+1];
+    int edges[M]={1,2,0,2,5,0,1,3,5,4,2,12,11,2,5,1,2,4,6,7,7,5,5,6,8,10,7,10,10,7,8,9,12,3,13,3,11,13,14,11,12,14,15,13,12,16,14,16,14,15};
     vertex_pointers[0]=0;
     vertex_pointers[1]=2;
     vertex_pointers[2]=5;
@@ -141,28 +156,41 @@ int main(){
     vertex_pointers[16]=48;
     vertex_pointers[17]=50;
 
-    int root=0;
+    // Start Timer
+    float time,total_time=0;
+    cudaEvent_t start,stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start,0);
+
+    auto start_t = chrono::high_resolution_clock::now();
 
     int* dvertex_pointers;
-    cudaMalloc((void**)&dvertex_pointers,sizeof(int)*(n+1));
-    cudaMemcpy(dvertex_pointers,vertex_pointers,sizeof(int)*(n+1),cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&dvertex_pointers,sizeof(int)*(N+1));
+    cudaMemcpy(dvertex_pointers,vertex_pointers,sizeof(int)*(N+1),cudaMemcpyHostToDevice);
 
     int* dedges;
-    cudaMalloc((void**)&dedges,sizeof(int)*m);
-    cudaMemcpy(dedges,edges,sizeof(int)*m,cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&dedges,sizeof(int)*M);
+    cudaMemcpy(dedges,edges,sizeof(int)*M,cudaMemcpyHostToDevice);
 
-    int cut_vertex[17]={0};
+    int cut_vertex[N]={0};
     int* dcut_vertex;
-    cudaMalloc((void**) &dcut_vertex,sizeof(int)*n);
-    cudaMemcpy(dcut_vertex,cut_vertex,sizeof(int)*n,cudaMemcpyHostToDevice);
+    cudaMalloc((void**) &dcut_vertex,sizeof(int)*N);
+    cudaMemcpy(dcut_vertex,cut_vertex,sizeof(int)*N,cudaMemcpyHostToDevice);
 
-    int level[17];
-    for(int i=0;i<n;i++){
-        level[i]=INT_MAX/2;
-    }
-    level[root]=0;
+    int level[N];
+
     int* dlevel;
-    cudaMalloc((void**) &dlevel,sizeof(int)*n);
+    cudaMalloc((void**) &dlevel,sizeof(int)*N);
+
+    cudaEventRecord(start,0);
+    initialize<<<blocksPerGrid,threadsPerBlock>>>(dlevel);
+    cudaEventRecord(stop,0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&time,start,stop);
+    total_time+=time;
+
+    cudaMemcpy(level,dlevel,sizeof(int)*N,cudaMemcpyDeviceToHost);
 
     int flag=1;
     int* dflag;
@@ -170,23 +198,51 @@ int main(){
 
     while(flag){
         flag=0;
-        cudaMemcpy(dlevel,level,sizeof(int)*n,cudaMemcpyHostToDevice);
+        cudaMemcpy(dlevel,level,sizeof(int)*N,cudaMemcpyHostToDevice);
         cudaMemcpy(dflag,&flag,sizeof(int),cudaMemcpyHostToDevice);
-        bfs<<<1,n>>>(dflag,dlevel,dvertex_pointers,dedges,n);
-        cudaMemcpy(level,dlevel,sizeof(int)*n,cudaMemcpyDeviceToHost);
+
+        cudaEventRecord(start,0);
+        bfs<<<blocksPerGrid,N>>>(dflag,dlevel,dvertex_pointers,dedges);
+        cudaEventRecord(stop,0);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&time,start,stop);
+        total_time+=time;
+        
+        cudaMemcpy(level,dlevel,sizeof(int)*N,cudaMemcpyDeviceToHost);
         cudaMemcpy(&flag,dflag,sizeof(int),cudaMemcpyDeviceToHost);
     }
     cudaDeviceSynchronize();
 
-    cudaMemcpy(dlevel,level,sizeof(int)*n,cudaMemcpyHostToDevice);
-    find_cut_vertices<<<1,n>>>(dlevel,dvertex_pointers,dedges,dcut_vertex,n,root);
-    cudaDeviceSynchronize();
-    cudaMemcpy(&cut_vertex,dcut_vertex,sizeof(int)*n,cudaMemcpyDeviceToHost);
+    cudaMemcpy(dlevel,level,sizeof(int)*N,cudaMemcpyHostToDevice);
 
-    for(int i=0;i<n;i++){
+    cudaEventRecord(start,0);
+    find_cut_vertices<<<blocksPerGrid,N>>>(dlevel,dvertex_pointers,dedges,dcut_vertex);
+    cudaEventRecord(stop,0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&time,start,stop);
+    total_time+=time;
+    
+    cudaDeviceSynchronize();
+    cudaMemcpy(&cut_vertex,dcut_vertex,sizeof(int)*N,cudaMemcpyDeviceToHost);
+
+    cudaEventRecord(stop,0);
+    cudaEventElapsedTime(&time,start,stop);
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+    auto stop_t = chrono::high_resolution_clock::now();
+
+    cout<<"Cut vertices: ";
+    for(int i=0;i<N;i++){
         if(cut_vertex[i]==1){
             cout<<i<<" ";
         }
     }
+    cout<<endl;
 
+    auto duration = chrono::duration_cast<chrono::microseconds>(stop_t - start_t);
+    printf("CPU Time Taken: %f ms\n", ((float) duration.count())/1000.0);
+
+    printf("GPU Time Taken: %f ms\n", total_time);
 }
