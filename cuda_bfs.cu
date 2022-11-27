@@ -21,22 +21,6 @@ __global__ void bfs(int* dflag, int* ddist, int* dvertex_pointers, int* dedges){
     int tid=blockDim.x*blockIdx.x+threadIdx.x;
     int e;
 
-    int *global_now;
-    cudaMalloc(&global_now,sizeof(int));
-
-    clock_t start = clock();
-    clock_t now;
-    for (;;) {
-    now = clock();
-    clock_t cycles = now > start ? now - start : now + (0xffffffff - start);
-        if (cycles >= 10000) {
-            break;
-        }
-    }
-    // Stored "now" in global memory here to prevent the
-    // compiler from optimizing away the entire loop.
-    *global_now = now;
-    
     if(tid<N){
         for(int i=dvertex_pointers[tid];i<dvertex_pointers[tid+1];i++){
             e=dedges[i];
