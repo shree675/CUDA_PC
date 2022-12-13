@@ -5,7 +5,7 @@ The programs were timed usimg timers for both GPU and CPU time and the correspon
 
 > NOTE: Update the absolute path in this [bash script](run.sh) to match your system before running the following commands.
 
-The assignment consists of the following 3 programs:
+This directory consists of the following 3 programs:
 
 1. **Parallel BFS** - Program to perform Parallel BFS on a graph given in CSR format.
 
