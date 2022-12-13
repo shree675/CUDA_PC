@@ -1,4 +1,4 @@
-# CUDA Projects
+# Parallel-Graph-Algorithms-PC
 
 Graph Algorithms for popular graph questions have been implemented and executed using CUDA programs on GPUs.
 The programs were timed usimg timers for both GPU and CPU time and the corresponding performances were observed.
