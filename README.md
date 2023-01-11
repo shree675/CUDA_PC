@@ -102,5 +102,4 @@ Additional Test Cases for bccs is available in [this file](test_cases.txt)
 ## Authors
 
 - **CS19B037** Shreetesh M
-
 - **CS19B012** Debeshee Das
