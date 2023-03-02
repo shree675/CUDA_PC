@@ -3,7 +3,8 @@
 Graph Algorithms for popular graph questions have been implemented and executed using CUDA programs on GPUs.
 The programs were timed usimg timers for both GPU and CPU time and the corresponding performances were observed.
 
-> NOTE: Update the absolute path in this [bash script](run.sh) to match your system before running the following commands.
+> **Note**  
+> Update the absolute path in this [bash script](run.sh) to match your system before running the following commands.
 
 This directory consists of the following 3 programs:
 
