@@ -97,8 +97,10 @@ CPU Time Taken: 5.898000 ms
 GPU Time Taken: 2.012032 ms
 ```
 
-Note: For the corner case of the component that contains the root vertex, we handle it separately and assign the ID -1 to it. For all other components the ID is a non-negative integer.
-Additional Test Cases for bccs is available in [this file](test_cases.txt)
+> **Note**
+> For the corner case of the component that contains the root vertex, we handle it separately and assign the ID -1 to it. For all other components the ID is a non-negative integer.
+
+Additional test cases for BCCs are available in [this file](test_cases.txt).
 
 ## Authors
 
