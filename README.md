@@ -106,3 +106,5 @@ Additional test cases for BCCs are available in [this file](test_cases.txt).
 
 - **CS19B037** Shreetesh M
 - **CS19B012** Debeshee Das
+
+Also checkout OpenMP parallel graph algorithms [here](https://github.com/shree675/Parallel-Traversals-PC).
