@@ -3,7 +3,7 @@
 Graph Algorithms for popular graph questions have been implemented and executed using CUDA programs on GPUs.
 The programs were timed usimg timers for both GPU and CPU time and the corresponding performances were observed.
 
-> **Note**  
+> [!IMPORTANT]
 > Update the absolute path in this [bash script](run.sh) to match your system before running the following commands.
 
 This directory consists of the following 3 programs:
@@ -97,7 +97,7 @@ CPU Time Taken: 5.898000 ms
 GPU Time Taken: 2.012032 ms
 ```
 
-> **Note**
+> [!NOTE]
 > For the corner case of the component that contains the root vertex, we handle it separately and assign the ID -1 to it. For all other components the ID is a non-negative integer.
 
 Additional test cases for BCCs are available in [this file](test_cases.txt).
